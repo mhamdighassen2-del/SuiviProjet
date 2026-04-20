@@ -5,6 +5,34 @@ import { create } from 'zustand';
 import { Utilisateur, RoleUtilisateur } from '../types/models';
 import { api } from '../services/api';
 
+/** Rôle depuis le JWT (avant GET /auth/me) pour que hasRole marche au premier rendu. */
+function utilisateurDepuisToken(token: string | null): Utilisateur | null {
+    if (!token) return null;
+    try {
+        const parts = token.split('.');
+        if (parts.length < 2) return null;
+        const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4));
+        const payload = JSON.parse(atob(b64 + pad)) as {
+            id?: string;
+            email?: string;
+            role?: RoleUtilisateur;
+        };
+        if (!payload?.id || !payload?.role) return null;
+        return {
+            id: payload.id,
+            email: payload.email ?? '',
+            nom: '',
+            prenom: '',
+            role: payload.role,
+            actif: true,
+            cree_le: new Date().toISOString(),
+        };
+    } catch {
+        return null;
+    }
+}
+
 interface AuthState {
     user: Utilisateur | null;
     token: string | null;
@@ -18,7 +46,7 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
-    user:            null,
+    user:            utilisateurDepuisToken(localStorage.getItem('token')),
     token:           localStorage.getItem('token'),
     isAuthenticated: !!localStorage.getItem('token'),
 
@@ -37,6 +65,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             set({ user: null, token: null, isAuthenticated: false });
             return;
         }
+        set({ user: utilisateurDepuisToken(token), token, isAuthenticated: true });
         try {
             const { data } = await api.get<{ data: Utilisateur }>('/auth/me');
             set({ user: data.data, token, isAuthenticated: true });

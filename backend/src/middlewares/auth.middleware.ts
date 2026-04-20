@@ -10,6 +10,7 @@ declare global {
                 id: string;
                 email: string;
                 role: RoleUtilisateur;
+                service_id?: string | null;
             };
         }
     }
@@ -28,6 +29,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
             id: string;
             email: string;
             role: RoleUtilisateur;
+            service_id?: string | null;
         };
         req.user = payload;
         next();

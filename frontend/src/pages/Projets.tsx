@@ -2,10 +2,10 @@
 //  Liste des projets — filtres par statut et période (§3.2)
 // ============================================================
 import { useEffect, useState } from 'react';
-import { isAxiosError } from 'axios';
 import { Link } from 'react-router-dom';
 import { useProjetsStore } from '../stores/projets.store';
 import { useAuthStore } from '../stores/auth.store';
+import { getApiErrorMessage } from '../services/api';
 import { projetsService } from '../services/projets.service';
 import { StatutProjet } from '../types/models';
 
@@ -23,10 +23,10 @@ const STATUT_COLORS: Record<StatutProjet, string> = {
 };
 
 export default function Projets() {
-    const { projets, isLoading, charger } = useProjetsStore();
+    const { projets, isLoading, charger, retirerProjet } = useProjetsStore();
     const { hasRole } = useAuthStore();
     const canManageProjets = hasRole('CHEF_PROJET', 'ADMIN');
-    const canDeleteProjet = hasRole('ADMIN');
+    const canDeleteProjet = hasRole('CHEF_PROJET', 'ADMIN');
     const [statut, setStatut] = useState<StatutProjet | ''>('');
     const [dateDebut, setDateDebut] = useState('');
     const [dateFin, setDateFin] = useState('');
@@ -56,12 +56,10 @@ export default function Projets() {
         setDeletingId(p.id);
         try {
             await projetsService.delete(p.id);
+            retirerProjet(p.id);
             await charger(filters);
         } catch (e) {
-            const msg = isAxiosError(e)
-                ? (e.response?.data as { message?: string })?.message
-                : null;
-            setListError(msg || 'Suppression impossible.');
+            setListError(getApiErrorMessage(e, 'Suppression impossible.'));
         } finally {
             setDeletingId(null);
         }
@@ -225,7 +223,11 @@ export default function Projets() {
                                                 className="btn btn-ghost"
                                                 style={{ color: 'var(--danger)', padding: '2px 0' }}
                                                 disabled={deletingId === p.id}
-                                                onClick={() => void supprimer(p)}
+                                                onClick={(ev) => {
+                                                    ev.preventDefault();
+                                                    ev.stopPropagation();
+                                                    void supprimer(p);
+                                                }}
                                             >
                                                 {deletingId === p.id ? '…' : 'Supprimer'}
                                             </button>

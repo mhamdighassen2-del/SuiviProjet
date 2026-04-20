@@ -52,6 +52,8 @@ Géré par trigger sur `projet` et recalcul depuis le service.
 - `date_fin_reelle` ne peut être renseignée que si `statut = 'TERMINE'`.
 - Un OF ne peut pas avoir une `date_lancement` antérieure à `projet.date_debut`.
 
+**Application (cohérence avec la base)** : la date de fin réelle d’un **suivi** est refusée si le statut du suivi n’est pas `TERMINE` ; la date de lancement d’un **OF** est comparée au `date_debut` du projet à la création. Le **statut du projet** est recalculé après chaque mise à jour de suivi (aligné sur le tableau « Statut du projet » ci-dessus, hors ajustements manuels ultérieurs du chef de projet sur le projet seul).
+
 ---
 
 ## Historique

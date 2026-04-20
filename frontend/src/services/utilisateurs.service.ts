@@ -14,4 +14,10 @@ export const utilisateursService = {
 
     desactiver: (id: string) =>
         api.patch<{ data: Utilisateur }>(`/utilisateurs/${id}/desactiver`).then((r) => r.data.data),
+
+    activer: (id: string) =>
+        api.patch<{ data: Utilisateur }>(`/utilisateurs/${id}/activer`).then((r) => r.data.data),
+
+    delete: (id: string) =>
+        api.delete<{ message: string }>(`/utilisateurs/${encodeURIComponent(id)}`).then((r) => r.data),
 };

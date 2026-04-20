@@ -173,13 +173,26 @@ export const ProjetRepository = {
         return rows[0] || null;
     },
 
-    // Supprimer
+    // Supprimer : les OF ont une FK vers projet (001 sans CASCADE). On supprime d’abord
+    // les OF du projet, puis le projet (suivi_service / documents suivent le CASCADE projet).
     async delete(id: string): Promise<boolean> {
-        const { rowCount } = await db.query(
-            `DELETE FROM projet WHERE id = $1`,
-            [id]
-        );
-        return (rowCount ?? 0) > 0;
+        const client = await db.connect();
+        try {
+            await client.query('BEGIN');
+            await client.query(`DELETE FROM ordre_fabrication WHERE projet_id = $1`, [id]);
+            const { rowCount } = await client.query(`DELETE FROM projet WHERE id = $1`, [id]);
+            await client.query('COMMIT');
+            return (rowCount ?? 0) > 0;
+        } catch (e) {
+            try {
+                await client.query('ROLLBACK');
+            } catch {
+                /* connexion déjà rollback / fermée */
+            }
+            throw e;
+        } finally {
+            client.release();
+        }
     },
 
     // KPIs dashboard (compteurs projet + avancement moyen)

@@ -30,17 +30,8 @@ export default function Rapports() {
                     : `/rapports/projet/${projetId}/excel`;
             const res = await api.get(path, {
                 responseType: 'blob',
-                validateStatus: (s) => s === 200 || s === 501,
+                validateStatus: (s) => s === 200,
             });
-            if (res.status === 501) {
-                const text = await (res.data as Blob).text();
-                try {
-                    setMsg(JSON.parse(text).message || 'Non implémenté côté serveur.');
-                } catch {
-                    setMsg('Non implémenté côté serveur.');
-                }
-                return;
-            }
             downloadBlob(
                 res.data as Blob,
                 kind === 'pdf' ? `projet-${projetId}.pdf` : `projet-${projetId}.xlsx`
@@ -58,17 +49,8 @@ export default function Rapports() {
         try {
             const res = await api.get('/rapports/ofs/excel', {
                 responseType: 'blob',
-                validateStatus: (s) => s === 200 || s === 501,
+                validateStatus: (s) => s === 200,
             });
-            if (res.status === 501) {
-                const text = await (res.data as Blob).text();
-                try {
-                    setMsg(JSON.parse(text).message || 'Non implémenté côté serveur.');
-                } catch {
-                    setMsg('Non implémenté côté serveur.');
-                }
-                return;
-            }
             downloadBlob(res.data as Blob, 'ofs.xlsx');
         } catch {
             setMsg('Erreur réseau ou authentification.');

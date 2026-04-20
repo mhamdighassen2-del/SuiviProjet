@@ -1,0 +1,23 @@
+# PostgreSQL pour le développement — identifiants fixes (évite les blocages Windows / mot de passe inconnu).
+# Port 5433 pour ne pas entrer en conflit avec un PostgreSQL déjà installé sur 5432.
+#
+# Démarrage : à la racine du projet → docker compose up -d
+# Puis : cd backend && npm run db:migrate && npm run db:migrate:002 && npm run db:migrate:003 && npm run db:seed
+# (ou npm run db:setup si la base n’existe pas encore — voir backend/package.json)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: suivi-projets-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: suivi_projets
+    ports:
+      - '5433:5432'
+    volumes:
+      - suivi_projets_pgdata:/var/lib/postgresql/data
+
+volumes:
+  suivi_projets_pgdata:

@@ -23,7 +23,12 @@ export const AuthService = {
 
         const expiresIn = process.env.JWT_EXPIRES_IN || '8h';
         const token = jwt.sign(
-            { id: row.id, email: row.email, role: row.role },
+            {
+                id: row.id,
+                email: row.email,
+                role: row.role,
+                service_id: row.service_id,
+            },
             secret,
             { expiresIn } as jwt.SignOptions
         );
@@ -36,6 +41,8 @@ export const AuthService = {
             role: row.role,
             actif: row.actif,
             cree_le: row.cree_le.toISOString(),
+            service_id: row.service_id,
+            service_nom: row.service_nom,
         };
 
         return { token, user };
@@ -52,6 +59,8 @@ export const AuthService = {
             role: row.role,
             actif: row.actif,
             cree_le: row.cree_le.toISOString(),
+            service_id: row.service_id,
+            service_nom: row.service_nom,
         };
     },
 };

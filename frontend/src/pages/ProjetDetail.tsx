@@ -2,8 +2,8 @@
 //  Détail projet — suivi par service + OF (§3.2 / §3.3)
 // ============================================================
 import { useEffect, useState } from 'react';
-import { isAxiosError } from 'axios';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { getApiErrorMessage } from '../services/api';
 import { projetsService, suiviService, ofService } from '../services/projets.service';
 import {
     Projet,
@@ -13,8 +13,10 @@ import {
     StatutSuivi,
     EtatOF,
     CreateOFDTO,
+    HistoriqueEntree,
 } from '../types/models';
 import { useAuthStore } from '../stores/auth.store';
+import { useProjetsStore } from '../stores/projets.store';
 import { toDateInputValue, normalizeDateForApi } from '../utils/dateInput';
 
 const SERVICE_LABELS: Record<NomService, string> = {
@@ -23,6 +25,16 @@ const SERVICE_LABELS: Record<NomService, string> = {
     PRODUCTION: 'Production',
     QUALITE_PRODUIT: 'Qualité Produit',
 };
+
+/** Libellés courts pour les boutons d’onglet */
+const SERVICE_TAB_LABELS: Record<NomService, string> = {
+    ETUDE: 'Étude',
+    METHODES: 'Méthodes',
+    PRODUCTION: 'Production',
+    QUALITE_PRODUIT: 'Qualité',
+};
+
+const SERVICE_ORDER: NomService[] = ['ETUDE', 'METHODES', 'PRODUCTION', 'QUALITE_PRODUIT'];
 
 const STATUT_SUIVI_LABELS: Record<StatutSuivi, string> = {
     NON_DEMARRE: 'Non démarré',
@@ -38,19 +50,27 @@ const ETAT_OF_LABELS: Record<EtatOF, string> = {
     TERMINE: 'Terminé',
 };
 
+const TABLE_HISTO_LABELS: Record<string, string> = {
+    projet: 'Projet',
+    suivi_service: 'Suivi',
+    ordre_fabrication: 'OF',
+};
+
 export default function ProjetDetail() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const { hasRole } = useAuthStore();
+    const retirerProjet = useProjetsStore((s) => s.retirerProjet);
     const [projet, setProjet] = useState<Projet | null>(null);
     const [suivis, setSuivis] = useState<SuiviService[]>([]);
     const [ofsRetard, setOfsRetard] = useState<OrdreFabrication[]>([]);
-    const [suiviOuvert, setSuiviOuvert] = useState<string | null>(null);
+    const [historique, setHistorique] = useState<HistoriqueEntree[]>([]);
+    const [serviceSelectionne, setServiceSelectionne] = useState<NomService | null>(null);
 
     const canEdit = hasRole('RESPONSABLE_SERVICE', 'CHEF_PROJET', 'ADMIN');
     const canOF = hasRole('RESPONSABLE_SERVICE', 'CHEF_PROJET', 'ADMIN');
     const canEditProjet = hasRole('CHEF_PROJET', 'ADMIN');
-    const canDeleteProjet = hasRole('ADMIN');
+    const canDeleteProjet = hasRole('CHEF_PROJET', 'ADMIN');
     const [deleting, setDeleting] = useState(false);
 
     useEffect(() => {
@@ -73,6 +93,26 @@ export default function ProjetDetail() {
         };
     }, [id]);
 
+    useEffect(() => {
+        if (!id) return;
+        let cancelled = false;
+        projetsService.getHistorique(id).then((h) => {
+            if (!cancelled) setHistorique(h);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [id]);
+
+    useEffect(() => {
+        if (suivis.length === 0) return;
+        setServiceSelectionne((prev) => {
+            if (prev && suivis.some((s) => s.service?.nom === prev)) return prev;
+            const first = SERVICE_ORDER.find((nom) => suivis.some((s) => s.service?.nom === nom));
+            return first ?? null;
+        });
+    }, [suivis]);
+
     async function supprimerProjet() {
         if (!id || !projet) return;
         const ok = window.confirm(
@@ -82,18 +122,21 @@ export default function ProjetDetail() {
         setDeleting(true);
         try {
             await projetsService.delete(id);
+            retirerProjet(id);
             navigate('/projets', { replace: true });
         } catch (e) {
-            const msg = isAxiosError(e)
-                ? (e.response?.data as { message?: string })?.message
-                : null;
-            window.alert(msg || 'Suppression impossible.');
+            window.alert(getApiErrorMessage(e, 'Suppression impossible.'));
         } finally {
             setDeleting(false);
         }
     }
 
     if (!projet) return <p>Chargement…</p>;
+
+    const suiviAffiche =
+        serviceSelectionne !== null
+            ? suivis.find((x) => x.service?.nom === serviceSelectionne)
+            : undefined;
 
     return (
         <div>
@@ -113,7 +156,10 @@ export default function ProjetDetail() {
                     {canDeleteProjet && (
                         <button
                             type="button"
-                            onClick={() => void supprimerProjet()}
+                            onClick={(ev) => {
+                                ev.preventDefault();
+                                void supprimerProjet();
+                            }}
                             disabled={deleting}
                             style={{
                                 fontSize: 14,
@@ -155,20 +201,100 @@ export default function ProjetDetail() {
                 </p>
             </div>
 
-            <h2 style={{ fontSize: '1.15rem' }}>Suivi par service</h2>
-            <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 0 }}>
-                Étude, Méthodes, Production, Qualité — avancement, dates réelles, commentaires et blocages.
+            {historique.length > 0 && (
+                <div className="card" style={{ marginBottom: 28 }}>
+                    <h2 style={{ fontSize: '1.05rem', marginTop: 0 }}>Journal des modifications</h2>
+                    <p style={{ color: 'var(--muted)', fontSize: 13, marginTop: 0 }}>
+                        Dernières entrées enregistrées pour ce projet (projet, suivis, OF).
+                    </p>
+                    <div className="table-wrap">
+                        <table className="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Table</th>
+                                    <th>Action</th>
+                                    <th>Utilisateur</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {historique.slice(0, 50).map((h) => (
+                                    <tr key={h.id}>
+                                        <td style={{ whiteSpace: 'nowrap' }}>
+                                            {new Date(h.cree_le).toLocaleString('fr-FR')}
+                                        </td>
+                                        <td>{TABLE_HISTO_LABELS[h.table_cible] ?? h.table_cible}</td>
+                                        <td>{h.action}</td>
+                                        <td style={{ fontSize: 13, color: 'var(--muted)' }}>
+                                            {h.utilisateur_id ? h.utilisateur_id.slice(0, 8) + '…' : '—'}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            <h2 style={{ fontSize: '1.15rem', marginBottom: 8 }}>Suivi par service</h2>
+            <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 0, marginBottom: 16 }}>
+                Sélectionnez un service : avancement, dates réelles, commentaires et blocages.
             </p>
-            <div style={{ display: 'grid', gap: 16, marginBottom: 36 }}>
-                {suivis.map((s) => (
+
+            <div
+                className="projet-service-tabs"
+                style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 10,
+                    marginBottom: 20,
+                }}
+                role="tablist"
+                aria-label="Services du projet"
+            >
+                {SERVICE_ORDER.map((nom) => {
+                    const s = suivis.find((x) => x.service?.nom === nom);
+                    const actif = serviceSelectionne === nom;
+                    return (
+                        <button
+                            key={nom}
+                            type="button"
+                            role="tab"
+                            aria-selected={actif}
+                            disabled={!s}
+                            className={actif ? 'btn btn-primary' : 'btn btn-ghost'}
+                            onClick={() => s && setServiceSelectionne(nom)}
+                            style={{
+                                minWidth: 128,
+                                justifyContent: 'space-between',
+                                gap: 10,
+                            }}
+                        >
+                            <span>{SERVICE_TAB_LABELS[nom]}</span>
+                            {s != null && (
+                                <span
+                                    style={{
+                                        fontSize: 12,
+                                        fontWeight: 700,
+                                        opacity: 0.95,
+                                    }}
+                                >
+                                    {s.taux_avancement}%
+                                </span>
+                            )}
+                        </button>
+                    );
+                })}
+            </div>
+
+            {suiviAffiche && (
+                <div style={{ marginBottom: 36 }}>
                     <SuiviCard
-                        key={s.id}
+                        key={suiviAffiche.id}
                         projetId={projet.id}
-                        suivi={s}
+                        suivi={suiviAffiche}
                         canEdit={canEdit}
                         canOF={canOF}
-                        isOpen={suiviOuvert === s.id}
-                        onToggle={() => setSuiviOuvert((prev) => (prev === s.id ? null : s.id))}
                         onRefresh={async () => {
                             const list = await suiviService.getByProjet(id!);
                             setSuivis(list);
@@ -176,8 +302,8 @@ export default function ProjetDetail() {
                             setProjet(p2);
                         }}
                     />
-                ))}
-            </div>
+                </div>
+            )}
 
             {ofsRetard.length > 0 && (
                 <div className="card" style={{ borderColor: '#fecaca', background: '#fffafa' }}>
@@ -221,16 +347,12 @@ function SuiviCard({
     suivi,
     canEdit,
     canOF,
-    isOpen,
-    onToggle,
     onRefresh,
 }: {
     projetId: string;
     suivi: SuiviService;
     canEdit: boolean;
     canOF: boolean;
-    isOpen: boolean;
-    onToggle: () => void;
     onRefresh: () => Promise<void>;
 }) {
     const [avancement, setAvancement] = useState(suivi.taux_avancement);
@@ -284,13 +406,8 @@ function SuiviCard({
             });
             await onRefresh();
         } catch (e) {
-            const msg = isAxiosError(e)
-                ? (e.response?.data as { message?: string })?.message
-                : null;
             setSaveError(
-                msg ||
-                    (e instanceof Error ? e.message : null) ||
-                    'Enregistrement impossible (droits, réseau ou serveur).'
+                getApiErrorMessage(e, 'Enregistrement impossible (droits, réseau ou serveur).')
             );
         } finally {
             setSaving(false);
@@ -322,30 +439,34 @@ function SuiviCard({
 
     return (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <button
-                type="button"
-                onClick={onToggle}
+            <div
                 style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 16,
-                    width: '100%',
+                    flexWrap: 'wrap',
+                    gap: 12,
                     padding: '14px 18px',
-                    cursor: 'pointer',
-                    background: '#f9fafb',
-                    border: 'none',
-                    textAlign: 'left',
-                    font: 'inherit',
+                    borderBottom: '1px solid var(--border)',
+                    background: 'linear-gradient(135deg, rgba(30, 91, 255, 0.08), rgba(106, 13, 173, 0.06))',
                 }}
             >
-                <strong style={{ flex: 1 }}>{label}</strong>
-                <span style={{ fontSize: 13, color: 'var(--muted)' }}>{STATUT_SUIVI_LABELS[statut]}</span>
-                <span style={{ fontWeight: 700 }}>{avancement}%</span>
-                <span aria-hidden>{isOpen ? '▲' : '▼'}</span>
-            </button>
+                <strong style={{ fontSize: '1.05rem' }}>{label}</strong>
+                <span
+                    style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        padding: '2px 10px',
+                        borderRadius: 999,
+                        background: 'rgba(30, 91, 255, 0.15)',
+                        color: 'var(--primary-bright, var(--primary))',
+                    }}
+                >
+                    {STATUT_SUIVI_LABELS[statut]}
+                </span>
+                <span style={{ marginLeft: 'auto', fontWeight: 700, fontSize: '1.1rem' }}>{avancement}%</span>
+            </div>
 
-            {isOpen && (
-                <div style={{ padding: 18, display: 'grid', gap: 14 }}>
+            <div style={{ padding: 18, display: 'grid', gap: 14 }}>
                     <label>
                         Avancement : {avancement}%
                         <input
@@ -500,7 +621,6 @@ function SuiviCard({
                         </div>
                     )}
                 </div>
-            )}
         </div>
     );
 }

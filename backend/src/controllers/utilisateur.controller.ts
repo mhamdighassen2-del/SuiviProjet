@@ -36,6 +36,28 @@ router.patch('/:id/desactiver', async (req: Request, res: Response) => {
     }
 });
 
+router.patch('/:id/activer', async (req: Request, res: Response) => {
+    try {
+        const data = await UtilisateurService.activer(req.params.id);
+        res.json({ data, message: 'Utilisateur activé' });
+    } catch (err) {
+        const msg = (err as Error).message;
+        if (msg === 'Utilisateur introuvable') return res.status(404).json({ message: msg });
+        res.status(400).json({ message: msg });
+    }
+});
+
+router.delete('/:id', async (req: Request, res: Response) => {
+    try {
+        await UtilisateurService.supprimer(req.params.id, req.user!.id);
+        res.json({ message: 'Utilisateur supprimé' });
+    } catch (err) {
+        const msg = (err as Error).message;
+        if (msg === 'Utilisateur introuvable') return res.status(404).json({ message: msg });
+        res.status(400).json({ message: msg });
+    }
+});
+
 router.get('/:id', async (req: Request, res: Response) => {
     try {
         const u = await UtilisateurService.getById(req.params.id);

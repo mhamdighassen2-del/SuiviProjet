@@ -7,6 +7,7 @@ import {
     CreateProjetDTO, UpdateProjetDTO,
     UpdateSuiviDTO, CreateOFDTO, UpdateOFDTO,
     DashboardKPIs, StatutProjet,
+    HistoriqueEntree,
 } from '../types/models';
 
 // ── Projets ──────────────────────────────────────────────────
@@ -25,10 +26,10 @@ export const projetsService = {
         api.put<{ data: Projet }>(`/projets/${id}`, dto).then(r => r.data.data),
 
     delete: (id: string) =>
-        api.delete(`/projets/${id}`),
+        api.delete<{ message: string }>(`/projets/${encodeURIComponent(id)}`).then((r) => r.data),
 
     getHistorique: (id: string) =>
-        api.get(`/projets/${id}/historique`).then(r => r.data.data),
+        api.get<{ data: HistoriqueEntree[] }>(`/projets/${id}/historique`).then((r) => r.data.data),
 };
 
 // ── Suivis service ───────────────────────────────────────────

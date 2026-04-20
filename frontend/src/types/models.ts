@@ -21,6 +21,19 @@ export type EtatOF =
 export interface Utilisateur {
     id: string; nom: string; prenom: string;
     email: string; role: RoleUtilisateur; actif: boolean; cree_le: string;
+    service_id?: string | null;
+    service_nom?: NomService | null;
+}
+
+export interface HistoriqueEntree {
+    id: string;
+    utilisateur_id: string | null;
+    table_cible: string;
+    entite_id: string;
+    action: 'INSERT' | 'UPDATE' | 'DELETE';
+    ancienne_valeur?: Record<string, unknown>;
+    nouvelle_valeur?: Record<string, unknown>;
+    cree_le: string;
 }
 
 export interface Service {
@@ -88,6 +101,7 @@ export interface CreateUtilisateurDTO {
     email: string;
     mot_de_passe: string;
     role: RoleUtilisateur;
+    service_id?: string | null;
 }
 
 export interface UpdateUtilisateurDTO {
@@ -97,4 +111,5 @@ export interface UpdateUtilisateurDTO {
     mot_de_passe?: string;
     role?: RoleUtilisateur;
     actif?: boolean;
+    service_id?: string | null;
 }

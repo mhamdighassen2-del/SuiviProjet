@@ -1,16 +1,13 @@
 import bcrypt from 'bcrypt';
-import { UtilisateurRepository } from '../repositories/utilisateur.repository';
-import { CreateUtilisateurDTO, UpdateUtilisateurDTO } from '../models/types';
+import { UtilisateurRepository, UtilisateurRow } from '../repositories/utilisateur.repository';
+import {
+    CreateUtilisateurDTO,
+    NomService,
+    RoleUtilisateur,
+    UpdateUtilisateurDTO,
+} from '../models/types';
 
-function toApiUser(row: {
-    id: string;
-    nom: string;
-    prenom: string;
-    email: string;
-    role: string;
-    actif: boolean;
-    cree_le: Date;
-}) {
+function toApiUser(row: UtilisateurRow) {
     return {
         id: row.id,
         nom: row.nom,
@@ -19,6 +16,8 @@ function toApiUser(row: {
         role: row.role,
         actif: row.actif,
         cree_le: row.cree_le.toISOString(),
+        service_id: row.service_id ?? undefined,
+        service_nom: (row.service_nom as NomService | undefined) ?? undefined,
     };
 }
 
@@ -34,6 +33,9 @@ export const UtilisateurService = {
     },
 
     async creer(dto: CreateUtilisateurDTO) {
+        if (dto.role === 'RESPONSABLE_SERVICE' && !dto.service_id) {
+            throw new Error('Le service est obligatoire pour un responsable de service.');
+        }
         const existing = await UtilisateurRepository.findByEmail(dto.email);
         if (existing) {
             throw new Error('Cet email est déjà utilisé');
@@ -46,6 +48,13 @@ export const UtilisateurService = {
     async modifier(id: string, dto: UpdateUtilisateurDTO) {
         const current = await UtilisateurRepository.findById(id);
         if (!current) throw new Error('Utilisateur introuvable');
+
+        const nextRole = dto.role ?? (current.role as RoleUtilisateur);
+        const nextServiceId =
+            dto.service_id !== undefined ? dto.service_id : current.service_id;
+        if (nextRole === 'RESPONSABLE_SERVICE' && !nextServiceId) {
+            throw new Error('Le service est obligatoire pour un responsable de service.');
+        }
 
         if (dto.email && dto.email.trim().toLowerCase() !== current.email.toLowerCase()) {
             const taken = await UtilisateurRepository.findByEmail(dto.email);
@@ -70,5 +79,39 @@ export const UtilisateurService = {
         const row = await UtilisateurRepository.update(id, { actif: false });
         if (!row) throw new Error('Utilisateur introuvable');
         return toApiUser(row);
+    },
+
+    async activer(id: string) {
+        const row = await UtilisateurRepository.update(id, { actif: true });
+        if (!row) throw new Error('Utilisateur introuvable');
+        return toApiUser(row);
+    },
+
+    /**
+     * Suppression définitive. Bloqué si responsable de projet(s), dernier ADMIN, ou suppression de soi-même.
+     */
+    async supprimer(id: string, currentUserId: string) {
+        if (id === currentUserId) {
+            throw new Error('Vous ne pouvez pas supprimer votre propre compte');
+        }
+        const row = await UtilisateurRepository.findById(id);
+        if (!row) throw new Error('Utilisateur introuvable');
+
+        const nbProjets = await UtilisateurRepository.countProjetsResponsable(id);
+        if (nbProjets > 0) {
+            throw new Error(
+                `Impossible de supprimer : cet utilisateur est responsable de ${nbProjets} projet(s). Réassignez ou supprimez ces projets d'abord.`
+            );
+        }
+
+        if (row.role === 'ADMIN') {
+            const admins = await UtilisateurRepository.countAdmins();
+            if (admins <= 1) {
+                throw new Error('Impossible de supprimer le dernier administrateur.');
+            }
+        }
+
+        const ok = await UtilisateurRepository.deleteCascade(id);
+        if (!ok) throw new Error('Suppression impossible');
     },
 };

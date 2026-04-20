@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { OFService } from '../services/of.service';
 import { CreateOFDTO } from '../models/types';
 import { authenticate, authorize } from '../middlewares/auth.middleware';
+import { HttpError } from '../utils/http-error';
 
 const router = Router();
 
@@ -39,11 +40,13 @@ router.put(
     authorize('RESPONSABLE_SERVICE', 'CHEF_PROJET', 'ADMIN'),
     async (req: Request, res: Response) => {
         try {
-            const data = await OFService.mettreAJour(req.params.id, req.body);
+            const data = await OFService.mettreAJour(req.params.id, req.body, req.user!.id);
             if (!data) return res.status(404).json({ message: 'OF introuvable' });
             res.json({ data, message: 'OF mis à jour' });
         } catch (err) {
-            res.status(400).json({ message: (err as Error).message });
+            const msg = (err as Error).message;
+            if (err instanceof HttpError) return res.status(err.statusCode).json({ message: err.message });
+            res.status(400).json({ message: msg });
         }
     }
 );
@@ -54,7 +57,7 @@ router.delete(
     authorize('CHEF_PROJET', 'ADMIN'),
     async (req: Request, res: Response) => {
         try {
-            const ok = await OFService.supprimer(req.params.id);
+            const ok = await OFService.supprimer(req.params.id, req.user!.id);
             if (!ok) return res.status(404).json({ message: 'OF introuvable' });
             res.json({ message: 'OF supprimé' });
         } catch (err) {
@@ -84,10 +87,12 @@ router.post(
                 return res.status(400).json({ message: 'projet_id requis' });
             }
             const dto: CreateOFDTO = { numero_of, designation, date_lancement, date_fin_prevue, commentaire };
-            const data = await OFService.creer(req.params.suiviId, projet_id, dto);
+            const data = await OFService.creer(req.params.suiviId, projet_id, dto, req.user!.id);
             res.status(201).json({ data, message: 'OF créé' });
         } catch (err) {
-            res.status(400).json({ message: (err as Error).message });
+            const msg = (err as Error).message;
+            if (err instanceof HttpError) return res.status(err.statusCode).json({ message: err.message });
+            res.status(400).json({ message: msg });
         }
     }
 );

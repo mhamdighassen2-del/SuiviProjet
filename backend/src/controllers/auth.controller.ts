@@ -13,17 +13,35 @@ router.post('/login', async (req: Request, res: Response) => {
         const { token, user } = await AuthService.login(email, mot_de_passe);
         res.json({ token, user });
     } catch (err) {
-        const msg = (err as Error).message;
+        const e = err as Error & { code?: string };
+        const msg = e.message || '';
         if (msg === 'Compte désactivé') {
             return res.status(403).json({ message: msg });
         }
         if (msg === 'Identifiants incorrects') {
             return res.status(401).json({ message: msg });
         }
-        if (msg.includes('JWT')) {
+        if (msg.includes('JWT') || msg.includes('Configuration serveur')) {
             return res.status(500).json({ message: msg });
         }
-        res.status(401).json({ message: msg });
+        if (
+            e.code === 'ECONNREFUSED' ||
+            e.code === 'ETIMEDOUT' ||
+            msg.includes('Connection terminated') ||
+            msg.includes('timeout')
+        ) {
+            return res.status(503).json({
+                message:
+                    'Base de données indisponible. Démarrez PostgreSQL et vérifiez DB_HOST, DB_PORT, DB_NAME, DB_USER et DB_PASSWORD dans backend/.env.',
+            });
+        }
+        if (msg.includes('password authentication failed') || msg.includes('authentification par mot de passe')) {
+            return res.status(503).json({
+                message:
+                    'PostgreSQL refuse la connexion : utilisateur ou mot de passe incorrect (voir DB_USER / DB_PASSWORD dans backend/.env).',
+            });
+        }
+        res.status(500).json({ message: msg || 'Erreur serveur' });
     }
 });
 

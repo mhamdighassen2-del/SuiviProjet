@@ -11,6 +11,15 @@ INSERT INTO utilisateur (nom, prenom, email, mot_de_passe_hash, role) VALUES
     ('Lefebvre', 'Claire',   'c.lefebvre@company.com',  '$2b$10$doai5q4aXVAmBFcOFusD0ujDYOImAIzhmnFB98TmEen4.c2bjciKu',   'RESPONSABLE_SERVICE'),
     ('Bernard',  'Thomas',   't.bernard@company.com',   '$2b$10$doai5q4aXVAmBFcOFusD0ujDYOImAIzhmnFB98TmEen4.c2bjciKu',    'UTILISATEUR');
 
+-- Rattachement service (colonne 003_utilisateur_service.sql) : obligatoire pour RESPONSABLE_SERVICE
+UPDATE utilisateur u SET service_id = s.id
+FROM service s
+WHERE u.email = 'm.dupont@company.com' AND s.nom = 'METHODES';
+
+UPDATE utilisateur u SET service_id = s.id
+FROM service s
+WHERE u.email = 'c.lefebvre@company.com' AND s.nom = 'PRODUCTION';
+
 -- Projets de test
 INSERT INTO projet (reference, nom, client, date_debut, date_fin_prevue, responsable_id, statut)
 SELECT

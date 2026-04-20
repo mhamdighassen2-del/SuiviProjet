@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { ProjetService } from '../services/projet.service';
+import { HistoriqueService } from '../services/historique.service';
 import { authenticate, authorize } from '../middlewares/auth.middleware';
 
 const router = Router();
@@ -25,8 +26,13 @@ router.get('/:id/suivis', authenticate, async (req: Request, res: Response) => {
     }
 });
 
-router.get('/:id/historique', authenticate, async (_req: Request, res: Response) => {
-    res.json({ data: [] });
+router.get('/:id/historique', authenticate, async (req: Request, res: Response) => {
+    try {
+        const data = await HistoriqueService.listerPourProjet(req.params.id);
+        res.json({ data });
+    } catch (err) {
+        res.status(500).json({ message: (err as Error).message });
+    }
 });
 
 // GET /api/projets/:id
@@ -42,7 +48,7 @@ router.get('/:id', authenticate, async (req: Request, res: Response) => {
 // POST /api/projets
 router.post('/', authenticate, authorize('CHEF_PROJET', 'ADMIN'), async (req: Request, res: Response) => {
     try {
-        const projet = await ProjetService.creerProjet(req.body, req.user!.id);
+        const projet = await ProjetService.creerProjet(req.body, req.user!.id, req.user!.id);
         res.status(201).json({ data: projet, message: 'Projet créé' });
     } catch (err) {
         res.status(400).json({ message: (err as Error).message });
@@ -52,7 +58,7 @@ router.post('/', authenticate, authorize('CHEF_PROJET', 'ADMIN'), async (req: Re
 // PUT /api/projets/:id
 router.put('/:id', authenticate, authorize('CHEF_PROJET', 'ADMIN'), async (req: Request, res: Response) => {
     try {
-        const projet = await ProjetService.modifierProjet(req.params.id, req.body);
+        const projet = await ProjetService.modifierProjet(req.params.id, req.body, req.user!.id);
         res.json({ data: projet, message: 'Projet mis à jour' });
     } catch (err) {
         res.status(400).json({ message: (err as Error).message });
@@ -60,13 +66,22 @@ router.put('/:id', authenticate, authorize('CHEF_PROJET', 'ADMIN'), async (req: 
 });
 
 // DELETE /api/projets/:id
-router.delete('/:id', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
-    try {
-        await ProjetService.supprimerProjet(req.params.id);
-        res.json({ message: 'Projet supprimé' });
-    } catch (err) {
-        res.status(404).json({ message: (err as Error).message });
+router.delete(
+    '/:id',
+    authenticate,
+    authorize('CHEF_PROJET', 'ADMIN'),
+    async (req: Request, res: Response) => {
+        try {
+            await ProjetService.supprimerProjet(req.params.id, req.user!.id);
+            res.json({ message: 'Projet supprimé' });
+        } catch (err) {
+            const msg = (err as Error).message;
+            if (msg === 'Projet introuvable') {
+                return res.status(404).json({ message: msg });
+            }
+            return res.status(500).json({ message: msg });
+        }
     }
-});
+);
 
 export default router;

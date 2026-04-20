@@ -2,8 +2,11 @@
 //  Gestion des utilisateurs — ADMIN uniquement
 // ============================================================
 import { FormEvent, useEffect, useState } from 'react';
+import { getApiErrorMessage } from '../services/api';
 import { utilisateursService } from '../services/utilisateurs.service';
-import { Utilisateur, RoleUtilisateur } from '../types/models';
+import { referentielService } from '../services/referentiel.service';
+import { useAuthStore } from '../stores/auth.store';
+import { Utilisateur, RoleUtilisateur, NomService } from '../types/models';
 
 const ROLES: { value: RoleUtilisateur; label: string }[] = [
     { value: 'UTILISATEUR', label: 'Utilisateur' },
@@ -12,7 +15,15 @@ const ROLES: { value: RoleUtilisateur; label: string }[] = [
     { value: 'ADMIN', label: 'Administrateur' },
 ];
 
+const SERVICE_LABELS: Record<NomService, string> = {
+    ETUDE: 'Étude',
+    METHODES: 'Méthodes',
+    PRODUCTION: 'Production',
+    QUALITE_PRODUIT: 'Qualité Produit',
+};
+
 export default function Utilisateurs() {
+    const currentUserId = useAuthStore((s) => s.user?.id);
     const [list, setList] = useState<Utilisateur[]>([]);
     const [loading, setLoading] = useState(true);
     const [err, setErr] = useState<string | null>(null);
@@ -22,6 +33,8 @@ export default function Utilisateurs() {
     const [email, setEmail] = useState('');
     const [motDePasse, setMotDePasse] = useState('');
     const [role, setRole] = useState<RoleUtilisateur>('UTILISATEUR');
+    const [serviceId, setServiceId] = useState('');
+    const [services, setServices] = useState<{ id: string; nom: NomService }[]>([]);
     const [saving, setSaving] = useState(false);
 
     function reload() {
@@ -37,9 +50,20 @@ export default function Utilisateurs() {
         reload();
     }, []);
 
+    useEffect(() => {
+        referentielService
+            .getServices()
+            .then(setServices)
+            .catch(() => setServices([]));
+    }, []);
+
     async function onCreate(e: FormEvent) {
         e.preventDefault();
         setErr(null);
+        if (role === 'RESPONSABLE_SERVICE' && !serviceId) {
+            setErr('Choisissez le service pour un responsable de service.');
+            return;
+        }
         setSaving(true);
         try {
             await utilisateursService.create({
@@ -48,12 +72,14 @@ export default function Utilisateurs() {
                 email: email.trim(),
                 mot_de_passe: motDePasse,
                 role,
+                service_id: role === 'RESPONSABLE_SERVICE' ? serviceId : null,
             });
             setNom('');
             setPrenom('');
             setEmail('');
             setMotDePasse('');
             setRole('UTILISATEUR');
+            setServiceId('');
             reload();
         } catch (e: unknown) {
             const msg =
@@ -66,17 +92,49 @@ export default function Utilisateurs() {
         }
     }
 
-    async function toggleActif(u: Utilisateur) {
-        if (!u.actif) {
-            setErr('Réactiver un compte : utilisez la modification (à venir) ou SQL.');
+    async function activerCompte(u: Utilisateur) {
+        setErr(null);
+        if (!window.confirm(`Activer le compte de ${u.prenom} ${u.nom} ? Il pourra à nouveau se connecter.`)) return;
+        try {
+            await utilisateursService.activer(u.id);
+            reload();
+        } catch (e) {
+            setErr(getApiErrorMessage(e, 'Activation impossible.'));
+        }
+    }
+
+    async function desactiverCompte(u: Utilisateur) {
+        setErr(null);
+        if (u.id === currentUserId) {
+            setErr('Vous ne pouvez pas désactiver votre propre compte.');
             return;
         }
-        if (!window.confirm(`Désactiver ${u.prenom} ${u.nom} ?`)) return;
+        if (!window.confirm(`Désactiver ${u.prenom} ${u.nom} ? Il ne pourra plus se connecter.`)) return;
         try {
             await utilisateursService.desactiver(u.id);
             reload();
-        } catch {
-            setErr('Désactivation impossible.');
+        } catch (e) {
+            setErr(getApiErrorMessage(e, 'Désactivation impossible.'));
+        }
+    }
+
+    async function supprimerCompte(u: Utilisateur) {
+        setErr(null);
+        if (u.id === currentUserId) {
+            setErr('Vous ne pouvez pas supprimer votre propre compte.');
+            return;
+        }
+        if (
+            !window.confirm(
+                `Supprimer définitivement ${u.prenom} ${u.nom} (${u.email}) ? Cette action est irréversible.`
+            )
+        )
+            return;
+        try {
+            await utilisateursService.delete(u.id);
+            reload();
+        } catch (e) {
+            setErr(getApiErrorMessage(e, 'Suppression impossible.'));
         }
     }
 
@@ -141,7 +199,11 @@ export default function Utilisateurs() {
                         <span style={{ fontSize: 13, fontWeight: 600 }}>Rôle</span>
                         <select
                             value={role}
-                            onChange={(e) => setRole(e.target.value as RoleUtilisateur)}
+                            onChange={(e) => {
+                                const v = e.target.value as RoleUtilisateur;
+                                setRole(v);
+                                if (v !== 'RESPONSABLE_SERVICE') setServiceId('');
+                            }}
                             style={inp}
                         >
                             {ROLES.map((r) => (
@@ -151,6 +213,24 @@ export default function Utilisateurs() {
                             ))}
                         </select>
                     </label>
+                    {role === 'RESPONSABLE_SERVICE' && (
+                        <label>
+                            <span style={{ fontSize: 13, fontWeight: 600 }}>Service</span>
+                            <select
+                                required
+                                value={serviceId}
+                                onChange={(e) => setServiceId(e.target.value)}
+                                style={inp}
+                            >
+                                <option value="">— Sélectionner —</option>
+                                {services.map((s) => (
+                                    <option key={s.id} value={s.id}>
+                                        {SERVICE_LABELS[s.nom]}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                    )}
                     <button type="submit" className="btn btn-primary" disabled={saving}>
                         {saving ? 'Création…' : 'Créer'}
                     </button>
@@ -164,8 +244,9 @@ export default function Utilisateurs() {
                             <th>Nom</th>
                             <th>Email</th>
                             <th>Rôle</th>
+                            <th>Service</th>
                             <th>Actif</th>
-                            <th></th>
+                            <th style={{ minWidth: 280 }}>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -176,13 +257,66 @@ export default function Utilisateurs() {
                                 </td>
                                 <td>{u.email}</td>
                                 <td>{ROLES.find((r) => r.value === u.role)?.label ?? u.role}</td>
-                                <td>{u.actif ? 'Oui' : 'Non'}</td>
+                                <td style={{ fontSize: 14 }}>
+                                    {u.service_nom
+                                        ? SERVICE_LABELS[u.service_nom]
+                                        : '—'}
+                                </td>
                                 <td>
-                                    {u.actif && (
-                                        <button type="button" className="btn btn-ghost" onClick={() => toggleActif(u)}>
-                                            Désactiver
+                                    <span
+                                        style={{
+                                            display: 'inline-block',
+                                            padding: '2px 10px',
+                                            borderRadius: 999,
+                                            fontSize: 12,
+                                            fontWeight: 600,
+                                            background: u.actif ? 'rgba(52, 211, 153, 0.15)' : 'rgba(248, 113, 113, 0.15)',
+                                            color: u.actif ? 'var(--success)' : 'var(--danger)',
+                                        }}
+                                    >
+                                        {u.actif ? 'Actif' : 'Inactif'}
+                                    </span>
+                                </td>
+                                <td>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                        {!u.actif && (
+                                            <button
+                                                type="button"
+                                                className="btn btn-primary"
+                                                style={{ padding: '0.35rem 0.85rem', fontSize: 13 }}
+                                                onClick={() => void activerCompte(u)}
+                                            >
+                                                Activer
+                                            </button>
+                                        )}
+                                        {u.actif && (
+                                            <button
+                                                type="button"
+                                                className="btn btn-ghost"
+                                                style={{ padding: '0.35rem 0.85rem', fontSize: 13 }}
+                                                onClick={() => void desactiverCompte(u)}
+                                                disabled={u.id === currentUserId}
+                                                title={u.id === currentUserId ? 'Impossible sur votre propre compte' : undefined}
+                                            >
+                                                Désactiver
+                                            </button>
+                                        )}
+                                        <button
+                                            type="button"
+                                            className="btn btn-ghost"
+                                            style={{
+                                                padding: '0.35rem 0.85rem',
+                                                fontSize: 13,
+                                                color: 'var(--danger)',
+                                                borderColor: 'rgba(248, 113, 113, 0.35)',
+                                            }}
+                                            onClick={() => void supprimerCompte(u)}
+                                            disabled={u.id === currentUserId}
+                                            title={u.id === currentUserId ? 'Impossible sur votre propre compte' : undefined}
+                                        >
+                                            Supprimer
                                         </button>
-                                    )}
+                                    </div>
                                 </td>
                             </tr>
                         ))}

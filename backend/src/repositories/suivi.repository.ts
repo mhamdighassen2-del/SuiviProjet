@@ -11,10 +11,47 @@ function toPgDate(v: unknown): string | null {
     return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
 }
 
+function mapSuiviRow(row: Record<string, unknown>): SuiviService {
+    return {
+        id: row.id as string,
+        projet_id: row.projet_id as string,
+        service_id: row.service_id as string,
+        responsable_id: (row.responsable_id as string | null) ?? undefined,
+        taux_avancement: Number(row.taux_avancement),
+        date_debut_reelle: row.date_debut_reelle as string | undefined,
+        date_fin_reelle: row.date_fin_reelle as string | undefined,
+        commentaire: (row.commentaire as string | null) ?? undefined,
+        blocage: (row.blocage as string | null) ?? undefined,
+        statut: row.statut as SuiviService['statut'],
+        mis_a_jour_le: row.mis_a_jour_le as Date,
+        service: {
+            id: row.service_id as string,
+            nom: row.service_nom as NomService,
+            description: (row.service_description as string | null) ?? undefined,
+        },
+    };
+}
+
 export const SuiviRepository = {
     /** Alias métier : suivis d’un projet avec nom du service */
     async findByProjet(projetId: string): Promise<SuiviService[]> {
         return SuiviRepository.findByProjetId(projetId);
+    },
+
+    async findById(id: string): Promise<SuiviService | null> {
+        const { rows } = await db.query(
+            `SELECT ss.id, ss.projet_id, ss.service_id, ss.responsable_id,
+                    ss.taux_avancement, ss.date_debut_reelle, ss.date_fin_reelle,
+                    ss.commentaire, ss.blocage, ss.statut::text AS statut, ss.mis_a_jour_le,
+                    s.nom::text AS service_nom, s.description AS service_description
+             FROM suivi_service ss
+             JOIN service s ON s.id = ss.service_id
+             WHERE ss.id = $1`,
+            [id]
+        );
+        const row = rows[0];
+        if (!row) return null;
+        return mapSuiviRow(row as Record<string, unknown>);
     },
 
     async findByProjetId(projetId: string): Promise<SuiviService[]> {
@@ -29,24 +66,7 @@ export const SuiviRepository = {
              ORDER BY s.nom`,
             [projetId]
         );
-        return rows.map((row) => ({
-            id: row.id,
-            projet_id: row.projet_id,
-            service_id: row.service_id,
-            responsable_id: row.responsable_id,
-            taux_avancement: Number(row.taux_avancement),
-            date_debut_reelle: row.date_debut_reelle,
-            date_fin_reelle: row.date_fin_reelle,
-            commentaire: row.commentaire,
-            blocage: row.blocage,
-            statut: row.statut as SuiviService['statut'],
-            mis_a_jour_le: row.mis_a_jour_le,
-            service: {
-                id: row.service_id,
-                nom: row.service_nom as NomService,
-                description: row.service_description ?? undefined,
-            },
-        }));
+        return rows.map((row) => mapSuiviRow(row as Record<string, unknown>));
     },
 
     async update(id: string, dto: UpdateSuiviDTO): Promise<SuiviService | null> {
@@ -90,28 +110,6 @@ export const SuiviRepository = {
             values
         );
         if (!rows[0]) return null;
-        const r = rows[0];
-        const svc = await db.query(
-            `SELECT s.id, s.nom::text AS nom, s.description FROM service s
-             JOIN suivi_service ss ON ss.service_id = s.id WHERE ss.id = $1`,
-            [id]
-        );
-        const srow = svc.rows[0];
-        return {
-            id: r.id,
-            projet_id: r.projet_id,
-            service_id: r.service_id,
-            responsable_id: r.responsable_id,
-            taux_avancement: Number(r.taux_avancement),
-            date_debut_reelle: r.date_debut_reelle,
-            date_fin_reelle: r.date_fin_reelle,
-            commentaire: r.commentaire,
-            blocage: r.blocage,
-            statut: r.statut as SuiviService['statut'],
-            mis_a_jour_le: r.mis_a_jour_le,
-            service: srow
-                ? { id: srow.id, nom: srow.nom as NomService, description: srow.description ?? undefined }
-                : undefined,
-        };
+        return SuiviRepository.findById(id);
     },
 };

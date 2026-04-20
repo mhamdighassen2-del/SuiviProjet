@@ -44,6 +44,9 @@ export interface Utilisateur {
     role: RoleUtilisateur;
     actif: boolean;
     cree_le: Date;
+    /** Rattachement métier (obligatoire si `role` = RESPONSABLE_SERVICE). */
+    service_id?: string | null;
+    service_nom?: NomService | null;
 }
 
 export interface Service {
@@ -186,6 +189,8 @@ export interface CreateUtilisateurDTO {
     email: string;
     mot_de_passe: string;
     role: RoleUtilisateur;
+    /** Obligatoire pour `RESPONSABLE_SERVICE`. */
+    service_id?: string | null;
 }
 
 export interface UpdateUtilisateurDTO {
@@ -195,6 +200,7 @@ export interface UpdateUtilisateurDTO {
     mot_de_passe?: string;
     role?: RoleUtilisateur;
     actif?: boolean;
+    service_id?: string | null;
 }
 
 // --- Réponses API -------------------------------------------

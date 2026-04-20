@@ -1,7 +1,7 @@
 // ============================================================
 //  services/api.ts  —  Client HTTP centralisé
 // ============================================================
-import axios from 'axios';
+import axios, { isAxiosError } from 'axios';
 
 export const api = axios.create({
     baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api',
@@ -26,3 +26,15 @@ api.interceptors.response.use(
         return Promise.reject(err);
     }
 );
+
+export function getApiErrorMessage(err: unknown, fallback: string): string {
+    if (!isAxiosError(err)) return fallback;
+    const d = err.response?.data;
+    if (d && typeof d === 'object' && 'message' in d && typeof (d as { message: string }).message === 'string') {
+        return (d as { message: string }).message;
+    }
+    const status = err.response?.status;
+    if (status === 403) return 'Accès non autorisé.';
+    if (status === 401) return 'Session expirée ou non authentifié.';
+    return fallback;
+}

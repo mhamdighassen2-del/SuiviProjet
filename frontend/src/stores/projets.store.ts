@@ -17,6 +17,8 @@ interface ProjetsState {
         date_fin?: string;
     }) => Promise<void>;
     chargerProjet: (id: string) => Promise<void>;
+    /** Retire un projet du cache après suppression réussie (liste à jour tout de suite). */
+    retirerProjet: (id: string) => void;
     reset: () => void;
 }
 
@@ -45,6 +47,12 @@ export const useProjetsStore = create<ProjetsState>((set) => ({
             set({ error: (e as Error).message, isLoading: false });
         }
     },
+
+    retirerProjet: (id) =>
+        set((s) => ({
+            projets: s.projets.filter((p) => p.id !== id),
+            projetCourant: s.projetCourant?.id === id ? null : s.projetCourant,
+        })),
 
     reset: () => set({ projets: [], projetCourant: null, error: null }),
 }));

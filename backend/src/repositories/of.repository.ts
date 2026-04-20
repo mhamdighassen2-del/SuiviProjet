@@ -21,6 +21,23 @@ export const OFRepository = {
         return rows;
     },
 
+    /** Liste OF avec nom de projet (exports). */
+    async findAllForExport(limit = 2000): Promise<(OrdreFabrication & { projet_nom: string })[]> {
+        const { rows } = await db.query(
+            `SELECT of.*,
+                    CASE WHEN of.date_fin_prevue < CURRENT_DATE AND of.etat != 'TERMINE'
+                         THEN CURRENT_DATE - of.date_fin_prevue
+                         ELSE 0 END AS jours_retard,
+                    p.nom AS projet_nom
+             FROM ordre_fabrication of
+             JOIN projet p ON p.id = of.projet_id
+             ORDER BY of.date_lancement DESC
+             LIMIT $1`,
+            [limit]
+        );
+        return rows as (OrdreFabrication & { projet_nom: string })[];
+    },
+
     // Lister les OF d'un suivi
     async findBySuivi(suivi_service_id: string): Promise<OrdreFabrication[]> {
         const { rows } = await db.query<OrdreFabrication>(

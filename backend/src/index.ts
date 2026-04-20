@@ -1,7 +1,8 @@
+import './config/env';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import dotenv from 'dotenv';
+import { getCorsOptions } from './config/cors';
 import './config/database';
 import authRouter from './controllers/auth.controller';
 import projetRouter from './controllers/projet.controller';
@@ -10,14 +11,13 @@ import suiviRouter from './controllers/suivi.controller';
 import ofRouter from './controllers/of.controller';
 import rapportRouter from './controllers/rapport.controller';
 import utilisateurRouter from './controllers/utilisateur.controller';
-
-dotenv.config();
+import serviceRouter from './controllers/service.controller';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(helmet());
-app.use(cors({ origin: process.env.FRONTEND_URL }));
+app.use(cors(getCorsOptions()));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -33,6 +33,7 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/api/auth', authRouter);
+app.use('/api', serviceRouter);
 app.use('/api/utilisateurs', utilisateurRouter);
 app.use('/api/projets', projetRouter);
 app.use('/api/dashboard', dashboardRouter);
