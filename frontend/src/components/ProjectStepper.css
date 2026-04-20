@@ -1,0 +1,195 @@
+/* ProjectStepper — workflow horizontal (thème EMP, dégradé #FF1E4D → #6A0DAD → #1E5BFF) */
+
+.project-stepper {
+  --ps-gradient: linear-gradient(135deg, #ff1e4d 0%, #6a0dad 50%, #1e5bff 100%);
+  --ps-active-glow: 0 0 0 2px rgba(30, 91, 255, 0.45), 0 0 28px rgba(30, 91, 255, 0.35);
+  --ps-line-gray: rgba(148, 163, 184, 0.35);
+  position: relative;
+  padding: 1.25rem 0 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.project-stepper__line-wrap {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  top: 2.25rem;
+  height: 4px;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.project-stepper__line-bg {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--ps-line-gray);
+}
+
+.project-stepper__line-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--ps-gradient);
+  transition: width 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 12px rgba(30, 91, 255, 0.25);
+}
+
+.project-stepper__steps {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.project-stepper__step {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.35rem 0.25rem 0.5rem;
+  border-radius: var(--radius-sm, 10px);
+  transition: transform 0.2s ease, background 0.2s ease;
+  color: var(--text, #f1f5f9);
+}
+
+.project-stepper__step:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.project-stepper__step:not(:disabled):hover {
+  transform: translateY(-2px);
+  background: rgba(30, 91, 255, 0.06);
+}
+
+.project-stepper__circle {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+  transition: box-shadow 0.35s ease, transform 0.25s ease, background 0.35s ease;
+  border: 2px solid transparent;
+}
+
+/* Pending / future */
+.project-stepper__step--pending .project-stepper__circle {
+  background: rgba(51, 65, 85, 0.85);
+  color: #94a3b8;
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+/* Active */
+.project-stepper__step--active .project-stepper__circle {
+  background: linear-gradient(145deg, rgba(30, 91, 255, 0.25), rgba(13, 59, 158, 0.5));
+  color: #fff;
+  border-color: rgba(30, 91, 255, 0.85);
+  box-shadow: var(--ps-active-glow);
+  transform: scale(1.06);
+}
+
+/* Completed */
+.project-stepper__step--completed .project-stepper__circle {
+  background: var(--ps-gradient);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 16px rgba(106, 13, 173, 0.35);
+}
+
+.project-stepper__step--completed .project-stepper__circle svg {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+}
+
+.project-stepper__label {
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+}
+
+.project-stepper__step--active .project-stepper__label {
+  color: var(--primary-bright, #1e5bff);
+  text-shadow: 0 0 20px rgba(30, 91, 255, 0.35);
+}
+
+.project-stepper__step--pending .project-stepper__label {
+  color: var(--muted, #94a3b8);
+}
+
+.project-stepper__step--completed .project-stepper__label {
+  color: #e2e8f0;
+}
+
+.project-stepper__pct {
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  opacity: 0.95;
+}
+
+.project-stepper__step--active .project-stepper__pct {
+  color: #93c5fd;
+}
+
+.project-stepper__step--pending .project-stepper__pct {
+  color: #64748b;
+}
+
+.project-stepper__step--completed .project-stepper__pct {
+  color: #fbcfe8;
+}
+
+/* Contenu sous le stepper — transition */
+.project-stepper-content {
+  animation: projectStepperFade 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes projectStepperFade {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 720px) {
+  .project-stepper__line-wrap {
+    left: 8%;
+    right: 8%;
+  }
+  .project-stepper__circle {
+    width: 2.35rem;
+    height: 2.35rem;
+    font-size: 0.7rem;
+  }
+  .project-stepper__label {
+    font-size: 0.68rem;
+  }
+}
+
+html[data-theme='light'] .project-stepper__step--pending .project-stepper__circle {
+  background: #e2e8f0;
+  color: #64748b;
+}
+
+html[data-theme='light'] .project-stepper__line-bg {
+  background: rgba(100, 116, 139, 0.35);
+}

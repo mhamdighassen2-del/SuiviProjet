@@ -18,6 +18,7 @@ import {
 import { useAuthStore } from '../stores/auth.store';
 import { useProjetsStore } from '../stores/projets.store';
 import { toDateInputValue, normalizeDateForApi } from '../utils/dateInput';
+import { ProjectStepper } from '../components/ProjectStepper';
 
 const SERVICE_LABELS: Record<NomService, string> = {
     ETUDE: 'Étude',
@@ -237,58 +238,26 @@ export default function ProjetDetail() {
             )}
 
             <h2 style={{ fontSize: '1.15rem', marginBottom: 8 }}>Suivi par service</h2>
-            <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 0, marginBottom: 16 }}>
-                Sélectionnez un service : avancement, dates réelles, commentaires et blocages.
+            <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 0, marginBottom: 8 }}>
+                Parcourez les étapes du workflow : avancement, dates réelles, commentaires et blocages.
             </p>
 
-            <div
-                className="projet-service-tabs"
-                style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 10,
-                    marginBottom: 20,
-                }}
-                role="tablist"
-                aria-label="Services du projet"
-            >
-                {SERVICE_ORDER.map((nom) => {
+            <ProjectStepper
+                activeId={serviceSelectionne}
+                onStepClick={(nom) => setServiceSelectionne(nom)}
+                steps={SERVICE_ORDER.map((nom) => {
                     const s = suivis.find((x) => x.service?.nom === nom);
-                    const actif = serviceSelectionne === nom;
-                    return (
-                        <button
-                            key={nom}
-                            type="button"
-                            role="tab"
-                            aria-selected={actif}
-                            disabled={!s}
-                            className={actif ? 'btn btn-primary' : 'btn btn-ghost'}
-                            onClick={() => s && setServiceSelectionne(nom)}
-                            style={{
-                                minWidth: 128,
-                                justifyContent: 'space-between',
-                                gap: 10,
-                            }}
-                        >
-                            <span>{SERVICE_TAB_LABELS[nom]}</span>
-                            {s != null && (
-                                <span
-                                    style={{
-                                        fontSize: 12,
-                                        fontWeight: 700,
-                                        opacity: 0.95,
-                                    }}
-                                >
-                                    {s.taux_avancement}%
-                                </span>
-                            )}
-                        </button>
-                    );
+                    return {
+                        id: nom,
+                        label: SERVICE_TAB_LABELS[nom],
+                        percent: s != null ? s.taux_avancement : null,
+                        disabled: !s,
+                    };
                 })}
-            </div>
+            />
 
             {suiviAffiche && (
-                <div style={{ marginBottom: 36 }}>
+                <div className="project-stepper-content" key={suiviAffiche.id} style={{ marginBottom: 36 }}>
                     <SuiviCard
                         key={suiviAffiche.id}
                         projetId={projet.id}

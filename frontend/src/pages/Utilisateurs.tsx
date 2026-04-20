@@ -138,12 +138,55 @@ export default function Utilisateurs() {
         }
     }
 
+    async function reinitialiserMotDePasse(u: Utilisateur) {
+        setErr(null);
+        const np = window.prompt(
+            `Nouveau mot de passe pour ${u.prenom} ${u.nom} (${u.email}) — minimum 6 caractères.\n` +
+                '(La saisie est visible : préférez un poste de confiance.)'
+        );
+        if (np === null) return;
+        const trimmed = np.trim();
+        if (trimmed.length < 6) {
+            setErr('Le mot de passe doit contenir au moins 6 caractères.');
+            return;
+        }
+        const confirm = window.prompt('Confirmer le même mot de passe :');
+        if (confirm === null) return;
+        if (confirm !== trimmed) {
+            setErr('Les deux saisies ne correspondent pas.');
+            return;
+        }
+        try {
+            await utilisateursService.update(u.id, { mot_de_passe: trimmed });
+            reload();
+        } catch (e) {
+            setErr(getApiErrorMessage(e, 'Réinitialisation impossible.'));
+        }
+    }
+
     if (loading && list.length === 0) return <p>Chargement…</p>;
 
     return (
         <div>
             <h1 className="page-title">Utilisateurs</h1>
             <p className="page-sub">Création et liste des comptes (réservé aux administrateurs).</p>
+
+            <div
+                className="card"
+                style={{
+                    marginBottom: 20,
+                    maxWidth: 720,
+                    fontSize: 14,
+                    lineHeight: 1.5,
+                    color: 'var(--muted)',
+                    borderLeft: '3px solid var(--accent-end)',
+                }}
+            >
+                <strong style={{ color: 'var(--text)' }}>Mots de passe</strong> — Les mots de passe ne sont pas
+                stockés en clair : ils sont chiffrés de façon irréversible (bcrypt).{' '}
+                <strong>Personne</strong>, pas même un administrateur, ne peut donc les consulter. En cas de perte,
+                utilisez « Réinitialiser le mot de passe » pour en définir un nouveau.
+            </div>
 
             {err && (
                 <p role="alert" style={{ color: 'var(--danger)', marginBottom: 12 }}>
@@ -301,6 +344,15 @@ export default function Utilisateurs() {
                                                 Désactiver
                                             </button>
                                         )}
+                                        <button
+                                            type="button"
+                                            className="btn btn-ghost"
+                                            style={{ padding: '0.35rem 0.85rem', fontSize: 13 }}
+                                            onClick={() => void reinitialiserMotDePasse(u)}
+                                            title="Définir un nouveau mot de passe (l’ancien ne peut pas être affiché)"
+                                        >
+                                            Réinitialiser MDP
+                                        </button>
                                         <button
                                             type="button"
                                             className="btn btn-ghost"
