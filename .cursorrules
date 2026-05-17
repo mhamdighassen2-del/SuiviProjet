@@ -1,0 +1,69 @@
+# .cursorrules — Guide Cursor pour ce projet
+
+## Contexte
+Application de suivi de projets industriels.
+4 services : Étude, Méthodes, Production, Qualité Produit.
+Les Ordres de Fabrication (OF) sont UNIQUEMENT pour Méthodes et Production.
+
+## Stack
+- Backend : Node.js + Express + TypeScript + PostgreSQL (pas d'ORM, SQL natif via `pg`)
+- Frontend : React + TypeScript + Vite + Zustand + Axios
+
+## Conventions de code
+
+### Backend
+- Toujours suivre le pattern 3 couches : controller → service → repository
+- Les repositories ne contiennent QUE du SQL — zéro logique métier
+- Les services appliquent les règles métier et ne font jamais de SQL direct
+- Les controllers gèrent uniquement HTTP (req/res) — pas de logique métier
+- Toujours utiliser des paramètres `$1, $2...` dans les requêtes pg (jamais de concaténation)
+- Typer toutes les fonctions avec TypeScript strict
+
+### Frontend
+- État global → Zustand store dans `src/stores/`
+- Appels API → fonctions dans `src/services/` (jamais d'axios direct dans les composants)
+- Types → toujours importer depuis `src/types/models.ts`
+- Pas de `any` sauf exception justifiée
+
+### Base de données
+- Migrations numérotées : `001_`, `002_`, etc.
+- Jamais modifier une migration existante — créer une nouvelle
+- Toujours tester les triggers sur un cas nominal ET un cas d'erreur
+
+## Règles métier importantes
+1. `projet.taux_avancement` = calculé par trigger DB (AVG des suivis) — ne pas le modifier manuellement
+2. OF interdit sur ETUDE et QUALITE_PRODUIT — validé par trigger DB ET par le service backend
+3. Un seul `suivi_service` par combinaison (projet × service) — contrainte UNIQUE en DB
+4. À la création d'un projet, créer automatiquement 4 `suivi_service` (un par service)
+
+## Structure des fichiers à créer
+
+### Nouveau endpoint API
+1. `repositories/xxx.repository.ts` — requêtes SQL
+2. `services/xxx.service.ts` — logique métier
+3. `controllers/xxx.controller.ts` — routes Express
+4. Brancher le router dans `src/index.ts`
+
+### Nouveau composant/page frontend
+1. Types dans `types/models.ts` si nouveaux
+2. Service dans `services/projets.service.ts`
+3. Page dans `pages/NomPage.tsx`
+4. Ajouter la route dans `App.tsx`
+
+## Pages frontend restantes à implémenter
+- [ ] `pages/Login.tsx` — formulaire email/mot de passe
+- [ ] `pages/OFs.tsx` — liste tous les OF avec filtre "en retard"
+- [ ] `pages/Utilisateurs.tsx` — CRUD utilisateurs (ADMIN seulement)
+- [ ] `pages/ProjetForm.tsx` — création/édition projet
+
+## Endpoints backend restants à implémenter
+- [ ] `controllers/auth.controller.ts` — POST /auth/login, GET /auth/me
+- [ ] `controllers/suivi.controller.ts` — PUT /suivis/:id, upload document
+- [ ] `controllers/of.controller.ts` — CRUD OF
+- [ ] `controllers/dashboard.controller.ts` — KPIs
+- [ ] `controllers/rapport.controller.ts` — export PDF/Excel
+- [ ] `repositories/suivi.repository.ts`
+- [ ] `repositories/of.repository.ts` ✅ (déjà créé)
+- [ ] `services/of.service.ts`
+- [ ] `utils/pdf.util.ts` — génération PDF avec PDFKit
+- [ ] `utils/excel.util.ts` — génération Excel avec ExcelJS

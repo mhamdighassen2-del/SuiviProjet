@@ -1,0 +1,359 @@
+================================================================
+  SUIVI PROJETS — CHANGELOG COMPLET V1
+  Application de suivi de projets industriels (EMP)
+  Stack : Node.js / Express / PostgreSQL / React / Vite / TypeScript
+================================================================
+
+----------------------------------------------------------------
+  OBJECTIF GENERAL
+----------------------------------------------------------------
+Ajouter la gestion des repères par projet (tableau style Excel)
+et distinguer les utilisateurs selon leur cellule de production :
+  - Débitage
+  - Usinage
+  - Assemblage
+  - Ajustage
+
+
+================================================================
+  1. BASE DE DONNEES — MIGRATIONS SQL
+================================================================
+
+--- Migration 006 : database/migrations/006_cellules_reperes.sql ---
+
+  - Création enum "cellule_type" : DEBITAGE, USINAGE, ASSEMBLAGE, AJUSTAGE
+  - Création enum "statut_repere" : PLANIFIE, EN_COURS, CLOTURE
+  - Ajout colonne "cellule" sur la table "utilisateur"
+  - Ajout colonnes "annee", "numero_client", "numero_dossier" sur la table "projet"
+  - Création table "repere" :
+      id, projet_id, code, designation, numero_of, statut,
+      temps_estime, avancement (0.0 à 1.0), cause_retard,
+      cellule, ordre, cree_le, modifie_le
+  - Création trigger "trg_recalculer_avancement" :
+      Recalcule automatiquement le taux_avancement du projet
+      après chaque INSERT/UPDATE/DELETE sur repere
+      Formule : SUM(avancement * temps_estime) / SUM(temps_estime) * 100
+
+--- Migration 007 : database/migrations/007_adapt_reperes_cellules.sql ---
+
+  Adapte le schéma existant (déjà partiellement migré) :
+  - Ajout colonne "cellule" (type nom_cellule) sur utilisateur
+  - Renommage "client_code" → "numero_client" sur projet
+  - Suppression et recréation de la table repere avec le bon schéma
+  - Suppression et recréation de l'enum statut_repere
+    (ancien : EN_ATTENTE/TERMINE → nouveau : PLANIFIE/CLOTURE)
+  - Correction de la fonction fn_recalculer_avancement_suivi_depuis_ofs
+    (ne référence plus les colonnes supprimées de l'ancienne table repere)
+
+
+================================================================
+  2. BACKEND — NODE.JS / EXPRESS / TYPESCRIPT
+================================================================
+
+--- Nouveaux fichiers créés ---
+
+  backend/src/repositories/repere.repository.ts
+    Fonctions d'accès base de données pour les repères :
+    - findByProjet(projetId)   : liste tous les repères d'un projet
+    - findById(id)             : récupère un repère par ID
+    - getNextOrdre(projetId)   : calcule le prochain numéro d'ordre
+    - create(dto)              : insère un nouveau repère
+    - update(id, dto)          : met à jour un repère existant
+    - delete(id)               : supprime un repère
+    - getStats(projetId)       : statistiques (total temps, avancement moyen)
+
+  backend/src/services/repere.service.ts
+    Logique métier pour les repères :
+    - buildCode(annee, numeroClient, numeroDossier, ordre)
+        Génère le code repère format YY-CCC-DDD-SSS
+        Exemple : 26-052-001-003
+    - listerParProjet(projetId, userId, role)
+    - creer(projetId, dto, userId, role)
+    - modifier(id, dto, userId, role)
+    - supprimer(id, userId, role)
+    - getStats(projetId)
+
+  backend/src/controllers/repere.controller.ts
+    Routes API REST pour les repères :
+    GET    /api/projets/:projetId/reperes         → liste repères
+    GET    /api/projets/:projetId/reperes/stats   → statistiques
+    POST   /api/projets/:projetId/reperes         → créer repère (CHEF_PROJET/ADMIN)
+    PUT    /api/reperes/:id                       → modifier repère
+    DELETE /api/reperes/:id                       → supprimer repère (CHEF_PROJET/ADMIN)
+
+--- Fichiers modifiés ---
+
+  backend/src/models/types.ts
+    - Ajout type CelluleType = 'DEBITAGE' | 'USINAGE' | 'ASSEMBLAGE' | 'AJUSTAGE'
+    - Ajout type StatutRepere = 'PLANIFIE' | 'EN_COURS' | 'CLOTURE'
+    - Ajout interface Repere (tous les champs du tableau repère)
+    - Mise à jour interface Utilisateur : ajout champ cellule
+    - Mise à jour interface Projet : ajout annee, numero_client, numero_dossier
+    - Ajout CreateRepereDTO et UpdateRepereDTO
+    - Mise à jour CreateUtilisateurDTO / UpdateUtilisateurDTO : ajout cellule
+
+  backend/src/repositories/projet.repository.ts
+    - Ajout fonction buildReference(annee, numeroClient, numeroDossier)
+        Génère la référence projet format YYYY-CCC-DDD
+        Exemple : 2026-052-001
+    - Mise à jour mapProjetRow : inclut annee, numero_client, numero_dossier
+    - Mise à jour create : INSERT avec annee/numero_client/numero_dossier
+        + génération automatique de la référence
+
+  backend/src/repositories/utilisateur.repository.ts
+    - Ajout u.cellule::text AS cellule dans tous les SELECT
+    - Mise à jour create : INSERT avec le champ cellule
+    - Mise à jour update : gestion du champ cellule
+
+  backend/src/repositories/auth.repository.ts
+    - Ajout cellule dans UtilisateurAvecHash
+    - Ajout u.cellule::text AS cellule dans les queries de login
+
+  backend/src/services/utilisateur.service.ts
+    - Ajout cellule dans toApiUser (retourné dans le token JWT)
+
+  backend/src/index.ts
+    - Import et enregistrement du router repère :
+      app.use('/api', repereRouter)
+    - Correction apostrophe dans le message de la route racine
+
+
+================================================================
+  3. FRONTEND — REACT / VITE / TYPESCRIPT
+================================================================
+
+--- Nouveaux fichiers créés ---
+
+  frontend/src/services/reperes.service.ts
+    Service Axios pour les repères :
+    - getByProjet(projetId)        → GET /api/projets/:id/reperes
+    - getStats(projetId)           → GET /api/projets/:id/reperes/stats
+    - create(projetId, dto)        → POST /api/projets/:id/reperes
+    - update(id, dto)              → PUT /api/reperes/:id
+    - delete(id)                   → DELETE /api/reperes/:id
+    Export également l'interface RepereStats
+
+  frontend/src/components/RepereTable.tsx
+    Tableau des repères inline-éditable style Excel :
+    Colonnes : Code | Désignation | N° OF | Cellule | Statut |
+               Tps estimé (min) | Avancement % | Tps réalisé (min) |
+               Cause de retard | Actions
+    Fonctionnalités :
+    - Affichage de tous les repères d'un projet
+    - Édition inline par ligne (bouton crayon ✎)
+    - Avancement stocké en 0.0-1.0, affiché en % entier (0 ou 100)
+    - Badges colorés par statut :
+        bleu = Planifié, orange = En cours, vert = Clôturé
+    - Ligne de pied : total temps estimé, avancement pondéré %, temps réalisé
+    - Formulaire d'ajout collapsible avec tous les champs
+    - 14 causes de retard (depuis le modèle Excel) :
+        ATT ST/ACHAT, ATT BC, ATT PRODUIT CLIENT, Att retour client,
+        CAPACITE, Replanifié par le client, En pause par le client,
+        Retard matière, Problème qualité, Problème technique,
+        Manque ressource, Sous-traitance, En attente validation, Autre
+
+--- Fichiers modifiés ---
+
+  frontend/src/types/models.ts
+    Mise à jour miroir des types backend :
+    - CelluleType, StatutRepere, Repere
+    - Utilisateur : + cellule
+    - Projet : + annee, numero_client, numero_dossier, reperes
+
+  frontend/src/pages/ProjetForm.tsx
+    Nouveau système de numérotation des projets :
+    - Remplacement du champ "référence" texte libre par 3 champs :
+        Année (ex: 2026) | N° Client (ex: 052) | N° Dossier (ex: 001)
+    - Affichage en temps réel de la référence générée : 2026-052-001
+    - Champs désactivés en mode édition (référence non modifiable)
+
+  frontend/src/pages/ProjetDetail.tsx
+    Refonte avec onglets :
+    - Onglet 1 "Repères" (par défaut) :
+        Intègre le composant RepereTable
+    - Onglet 2 "Suivi par service" :
+        Conserve les SuiviCard existants (Etude/Methodes/Production/Qualite)
+    - Onglet 3 "Journal" :
+        Historique des modifications
+    - En-tête enrichi avec annee / numero_client / numero_dossier
+
+  frontend/src/pages/Utilisateurs.tsx
+    Refonte complète pour distinguer par cellule :
+
+    AVANT : tableau plat avec une colonne "Cellule"
+
+    APRES :
+    - Bouton "+ Nouvel utilisateur" collapsible en haut
+    - 6 onglets filtrables avec compteurs :
+        [Tous] [🔩 Débitage] [⚙️ Usinage] [🔧 Assemblage] [📐 Ajustage] [Sans cellule]
+    - Onglet actif : bordure + fond coloré selon la cellule :
+        Débitage   → orange  (#d97706)
+        Usinage    → bleu    (#2563eb)
+        Assemblage → vert    (#16a34a)
+        Ajustage   → violet  (#7c3aed)
+    - Vue "Tous" : groupement par section avec header coloré par cellule
+    - Vue filtrée : tableau avec la cellule sélectionnée seulement
+    - Formulaire de création : inclut le champ Cellule (dropdown)
+    - Table utilisateurs : colonnes Nom / Email / Rôle / Actif / Actions
+    - Actions : Activer / Désactiver / Réinit. MDP / Supprimer
+
+
+================================================================
+  4. SEED — DONNEES DE TEST
+================================================================
+
+  database/seeds/seed.sql
+
+  6 utilisateurs avec cellule :
+    - admin@company.com         → ADMIN          (sans cellule)
+    - s.martin@company.com      → CHEF_PROJET    (sans cellule)
+    - m.dupont@company.com      → RESP. SERVICE  → USINAGE
+    - c.lefebvre@company.com    → RESP. SERVICE  → ASSEMBLAGE
+    - t.bernard@company.com     → UTILISATEUR    → DEBITAGE
+    - k.haddad@company.com      → UTILISATEUR    → AJUSTAGE
+    (mot de passe pour tous : password123)
+
+  5 projets avec numérotation structurée :
+    - 2026-052-001 : Ligne d'assemblage A3   (Renault Industries) — EN COURS
+    - 2026-031-002 : Outillage presse P12    (Stellantis)         — NON DEMARRE
+    - 2025-018-003 : Cellule robotisée R7    (Safran)             — TERMINE
+    - 2026-045-004 : Banc de test hydraulique(Bosch)              — EN COURS
+    - 2025-011-005 : Retrofit ligne peinture (Plastic Omnium)     — EN RETARD
+
+  8 repères pour le projet 2026-052-001 :
+    Code             | Désignation    | Cellule   | Statut
+    26-052-001-001   | Pilier 1       | DEBITAGE  | CLOTURE  (100%)
+    26-052-001-002   | Pilier 2       | USINAGE   | EN_COURS (0%)
+    26-052-001-003   | Pilier 3       | USINAGE   | CLOTURE  (100%)
+    26-052-001-004   | Traverse A     | DEBITAGE  | PLANIFIE (0%)
+    26-052-001-005   | Traverse B     | ASSEMBLAGE| CLOTURE  (100%)
+    26-052-001-006   | Platine base   | DEBITAGE  | PLANIFIE (0%)
+    26-052-001-007   | Support moteur | USINAGE   | EN_COURS (0%)
+    26-052-001-008   | Bride fixation | AJUSTAGE  | PLANIFIE (0%)
+
+  4 repères pour le projet 2026-045-004 :
+    26-045-004-001   | Bâti principal    | DEBITAGE  | CLOTURE  (100%)
+    26-045-004-002   | Bloc distributeur | USINAGE   | EN_COURS (0%)
+    26-045-004-003   | Panneau commande  | ASSEMBLAGE| PLANIFIE (0%)
+    26-045-004-004   | Tuyauterie HP     | AJUSTAGE  | PLANIFIE (0%)
+
+  4 OF de test (ordres de fabrication) :
+    OF-TEST-001 : Gabarit soudure — PLANIFIE     (projet 2026-052-001)
+    OF-TEST-002 : Outillage P12 40% — EN_COURS   (projet 2026-031-002)
+    OF-TEST-003 : Banc hydraulique 75% — EN_COURS(projet 2026-045-004)
+    OF-TEST-004 : Pré-série R7 — TERMINE         (projet 2025-018-003)
+
+
+================================================================
+  5. FORMAT DES CODES (MODELE EXCEL)
+================================================================
+
+  REFERENCE PROJET : YYYY-CCC-DDD
+    YYYY = année (ex: 2026)
+    CCC  = numéro client sur 3 chiffres (ex: 052)
+    DDD  = numéro dossier sur 3 chiffres (ex: 001)
+    → Exemple : 2026-052-001
+
+  CODE REPERE : YY-CCC-DDD-SSS
+    YY   = 2 derniers chiffres de l'année (ex: 26)
+    CCC  = numéro client sur 3 chiffres (ex: 052)
+    DDD  = numéro dossier sur 3 chiffres (ex: 001)
+    SSS  = séquence sur 3 chiffres (ex: 003)
+    → Exemple : 26-052-001-003
+
+  AVANCEMENT REPERE :
+    Stocké en base : décimal 0.0 à 1.0
+    Affiché à l'écran : 0% ou 100% (binaire comme dans Excel)
+    Temps réalisé = avancement × temps_estimé (en minutes)
+
+  AVANCEMENT PROJET (calculé automatiquement par trigger) :
+    taux_avancement = SUM(avancement × temps_estime) / SUM(temps_estime) × 100
+
+
+================================================================
+  6. INSTRUCTIONS DE MISE EN ROUTE
+================================================================
+
+  PREREQUIS :
+    - Node.js 18+
+    - PostgreSQL 14+ (local ou Docker)
+    - npm
+
+  ETAPE 1 — Base de données
+    Créer la base et appliquer les migrations dans l'ordre :
+      psql -U postgres -c "CREATE DATABASE suivi_projets;"
+      psql -U postgres -d suivi_projets -f database/migrations/001_init.sql
+      psql -U postgres -d suivi_projets -f database/migrations/002_ordre_fabrication_projet_cascade.sql
+      psql -U postgres -d suivi_projets -f database/migrations/003_utilisateur_service.sql
+      psql -U postgres -d suivi_projets -f database/migrations/005_drop_ai_conversation.sql
+      psql -U postgres -d suivi_projets -f database/migrations/006_cellules_reperes.sql
+      (si erreur schema existant → utiliser 007 à la place de 006)
+      psql -U postgres -d suivi_projets -f database/seeds/seed.sql
+
+  ETAPE 2 — Backend
+    cd backend
+    npm install
+    cp .env.example .env   (puis configurer DB_HOST, DB_PORT, etc.)
+    npm run dev            (démarre sur http://localhost:3000)
+
+  ETAPE 3 — Frontend
+    cd frontend
+    npm install
+    npm run dev            (démarre sur http://localhost:5173)
+
+  CONNEXION TEST :
+    Email    : admin@company.com
+    Mot de passe : password123
+
+  AUTRES COMPTES :
+    s.martin@company.com   (Chef de projet)
+    m.dupont@company.com   (Resp. service — Usinage)
+    c.lefebvre@company.com (Resp. service — Assemblage)
+    t.bernard@company.com  (Utilisateur — Débitage)
+    k.haddad@company.com   (Utilisateur — Ajustage)
+    → Tous avec mot de passe : password123
+
+
+================================================================
+  7. ARBORESCENCE DES FICHIERS CLES
+================================================================
+
+  suivi-projets-v1/
+  ├── backend/
+  │   └── src/
+  │       ├── controllers/
+  │       │   └── repere.controller.ts       [NOUVEAU]
+  │       ├── repositories/
+  │       │   ├── repere.repository.ts       [NOUVEAU]
+  │       │   ├── projet.repository.ts       [MODIFIE]
+  │       │   ├── utilisateur.repository.ts  [MODIFIE]
+  │       │   └── auth.repository.ts         [MODIFIE]
+  │       ├── services/
+  │       │   ├── repere.service.ts          [NOUVEAU]
+  │       │   └── utilisateur.service.ts     [MODIFIE]
+  │       ├── models/
+  │       │   └── types.ts                   [MODIFIE]
+  │       └── index.ts                       [MODIFIE]
+  ├── frontend/
+  │   └── src/
+  │       ├── components/
+  │       │   └── RepereTable.tsx            [NOUVEAU]
+  │       ├── pages/
+  │       │   ├── Utilisateurs.tsx           [REFONTE]
+  │       │   ├── ProjetForm.tsx             [MODIFIE]
+  │       │   └── ProjetDetail.tsx           [MODIFIE]
+  │       ├── services/
+  │       │   └── reperes.service.ts         [NOUVEAU]
+  │       └── types/
+  │           └── models.ts                  [MODIFIE]
+  └── database/
+      ├── migrations/
+      │   ├── 006_cellules_reperes.sql       [NOUVEAU]
+      │   └── 007_adapt_reperes_cellules.sql [NOUVEAU]
+      └── seeds/
+          └── seed.sql                       [MODIFIE]
+
+
+================================================================
+  FIN DU CHANGELOG
+================================================================

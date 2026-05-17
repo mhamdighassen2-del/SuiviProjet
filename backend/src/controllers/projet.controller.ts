@@ -1,0 +1,133 @@
+import { Router, Request, Response } from 'express';
+import multer from 'multer';
+import { ProjetService } from '../services/projet.service';
+import { ProjetImportService } from '../services/projet-import.service';
+import { HistoriqueService } from '../services/historique.service';
+import { authenticate, authorize } from '../middlewares/auth.middleware';
+import { HttpError } from '../utils/http-error';
+
+const router = Router();
+
+const uploadExcel = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+        const isXlsx =
+            file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+            file.originalname.toLowerCase().endsWith('.xlsx');
+        if (!isXlsx) return cb(new Error('Seuls les fichiers .xlsx sont acceptés.'));
+        cb(null, true);
+    },
+});
+
+// GET /api/projets?statut=EN_COURS&date_debut=2024-01-01
+router.get('/', authenticate, async (req: Request, res: Response) => {
+    try {
+        const { statut, date_debut, date_fin } = req.query as Record<string, string>;
+        const projets = await ProjetService.listerProjets({ statut: statut as any, date_debut, date_fin });
+        res.json({ data: projets });
+    } catch (err) {
+        res.status(500).json({ message: (err as Error).message });
+    }
+});
+
+// GET /api/projets/:id/suivis — avant /:id
+router.get('/:id/suivis', authenticate, async (req: Request, res: Response) => {
+    try {
+        const data = await ProjetService.listerSuivisProjet(req.params.id);
+        res.json({ data });
+    } catch (err) {
+        res.status(500).json({ message: (err as Error).message });
+    }
+});
+
+router.get('/:id/historique', authenticate, async (req: Request, res: Response) => {
+    try {
+        const data = await HistoriqueService.listerPourProjet(req.params.id);
+        res.json({ data });
+    } catch (err) {
+        res.status(500).json({ message: (err as Error).message });
+    }
+});
+
+// GET /api/projets/:id
+router.get('/:id', authenticate, async (req: Request, res: Response) => {
+    try {
+        const projet = await ProjetService.getProjet(req.params.id);
+        res.json({ data: projet });
+    } catch (err) {
+        res.status(404).json({ message: (err as Error).message });
+    }
+});
+
+// POST /api/projets
+router.post('/', authenticate, authorize('CHEF_PROJET', 'ADMIN'), async (req: Request, res: Response) => {
+    try {
+        const projet = await ProjetService.creerProjet(req.body, req.user!.id, req.user!.id);
+        res.status(201).json({ data: projet, message: 'Projet créé' });
+    } catch (err) {
+        res.status(400).json({ message: (err as Error).message });
+    }
+});
+
+// POST /api/projets/import-excel — Import depuis le fichier modèle de l'encadrant
+router.post(
+    '/import-excel',
+    authenticate,
+    authorize('CHEF_PROJET', 'ADMIN'),
+    uploadExcel.single('fichier'),
+    async (req: Request, res: Response) => {
+        try {
+            if (!req.file) {
+                throw new HttpError(400, "Aucun fichier fourni (clé attendue : 'fichier').");
+            }
+            const result = await ProjetImportService.importer(
+                req.file.buffer,
+                {
+                    nom: String(req.body?.nom ?? ''),
+                    client: String(req.body?.client ?? ''),
+                    date_debut: req.body?.date_debut || undefined,
+                    date_fin_prevue: req.body?.date_fin_prevue || undefined,
+                },
+                req.user!.id
+            );
+            res.status(201).json({ data: result, message: 'Projet importé depuis le fichier Excel.' });
+        } catch (err) {
+            if (err instanceof HttpError) {
+                return res.status(err.statusCode).json({ message: err.message });
+            }
+            res.status(400).json({ message: (err as Error).message });
+        }
+    }
+);
+
+// PUT /api/projets/:id
+router.put('/:id', authenticate, authorize('CHEF_PROJET', 'ADMIN'), async (req: Request, res: Response) => {
+    try {
+        const projet = await ProjetService.modifierProjet(req.params.id, req.body, req.user!.id);
+        res.json({ data: projet, message: 'Projet mis à jour' });
+    } catch (err) {
+        res.status(400).json({ message: (err as Error).message });
+    }
+});
+
+// DELETE /api/projets/:id
+router.delete(
+    '/:id',
+    authenticate,
+    authorize('CHEF_PROJET', 'ADMIN'),
+    async (req: Request, res: Response) => {
+        try {
+            await ProjetService.supprimerProjet(req.params.id, req.user!.id);
+            res.json({ message: 'Projet supprimé' });
+        } catch (err) {
+            const msg = (err as Error).message;
+            if (msg === 'Projet introuvable') {
+                return res.status(404).json({ message: msg });
+            }
+            return res.status(500).json({ message: msg });
+        }
+    }
+);
+
+export default router;
